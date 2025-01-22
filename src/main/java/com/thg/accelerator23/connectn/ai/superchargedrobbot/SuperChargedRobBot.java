@@ -20,6 +20,7 @@ public class SuperChargedRobBot extends Player {
 
   @Override
   public int makeMove(Board board) {
+    System.out.println("SuperChargedRobBot makeMove");
     long startTime = System.nanoTime();
     int bestMove = board.getConfig().getWidth() / 2; // Default to center
     int bestScore = Integer.MIN_VALUE;
@@ -32,38 +33,37 @@ public class SuperChargedRobBot extends Player {
 
     // Iterative deepening with time limit
     for (int depth = 1; depth <= MAX_DEPTH; depth++) {
+      System.out.println("Depth: " + depth);
       int currentBestMove = bestMove;
       int currentBestScore = bestScore;
 
       for (int column : getColumnOrder(board.getConfig().getWidth())) {
-        if (!isValidMove(board, column)) continue;
+        if (isValidMove(board, column)) {
+          try {
+            Board newBoard = new Board(board, column, getCounter());
+            int score = minimaxWithTimeLimit(
+                    newBoard,
+                    depth,
+                    false,
+                    Integer.MIN_VALUE,
+                    Integer.MAX_VALUE,
+                    startTime
+            );
 
-        try {
-          Board newBoard = new Board(board, column, getCounter());
-          int score = minimaxWithTimeLimit(
-                  newBoard,
-                  depth,
-                  false,
-                  Integer.MIN_VALUE,
-                  Integer.MAX_VALUE,
-                  startTime
-          );
-
-          if (score > currentBestScore) {
-            currentBestScore = score;
-            currentBestMove = column;
+            if (score > currentBestScore) {
+              currentBestScore = score;
+              currentBestMove = column;
+            }
+          } catch (TimeoutException e) {
+            return bestMove;
+          } catch (InvalidMoveException e) {
+            // Skip invalid moves
           }
-        } catch (TimeoutException e) {
-          return bestMove;
-        } catch (InvalidMoveException e) {
-          // Skip invalid moves
         }
       }
-
       bestMove = currentBestMove;
       bestScore = currentBestScore;
     }
-
     return bestMove;
   }
 
@@ -105,8 +105,8 @@ public class SuperChargedRobBot extends Player {
     Counter opponent = myCounter.getOther();
 
     // Check terminal conditions
-    if (hasWon(board, myCounter)) return 1000000;
-    if (hasWon(board, opponent)) return -1000000;
+    if (hasWon(board, myCounter)) return WIN_SCORE;
+    if (hasWon(board, opponent)) return -WIN_SCORE;
     if (depth == 0 || isBoardFull(board)) {
       return evaluateBoard(board);
     }
@@ -161,7 +161,7 @@ public class SuperChargedRobBot extends Player {
         if (!board.hasCounterAtPosition(pos)) {
           // Evaluate empty positions for potential future threats
           score += evaluateEmptyPosition(board, pos, myCounter);
-          score -= evaluateEmptyPosition(board, pos, opponent) * 1.1;
+          score -= (int) (evaluateEmptyPosition(board, pos, opponent) * 1.1);
           continue;
         }
 
