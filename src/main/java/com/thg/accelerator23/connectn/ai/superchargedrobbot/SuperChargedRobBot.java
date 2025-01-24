@@ -22,8 +22,7 @@ public class SuperChargedRobBot extends Player {
   public int makeMove(Board board) {
     long startTime = System.nanoTime();
     int boardWidth = board.getConfig().getWidth();
-    int bestMove = boardWidth / 2; // Default to center
-    int bestScore = Integer.MIN_VALUE;
+    int bestMove = boardWidth / 2; // Default to center column
 
     // Check for immediate winning moves or blocking moves
     int immediateMove = findImmediateMove(board);
@@ -33,36 +32,16 @@ public class SuperChargedRobBot extends Player {
 
     // Iterative deepening with time limit
     for (int depth = 1; depth <= MAX_DEPTH; depth++) {
-      int currentBestMove = bestMove;
-      int currentBestScore = bestScore;
+      int currentBestMove = findBestMoveAtDepth(board, depth, startTime);
 
-      for (int column : getColumnOrder(board.getConfig().getWidth())) {
-        if (isValidMove(board, column)) {
-          try {
-            Board newBoard = new Board(board, column, getCounter());
-            int score = minimaxWithTimeLimit(
-                    newBoard,
-                    depth,
-                    false,
-                    Integer.MIN_VALUE,
-                    Integer.MAX_VALUE,
-                    startTime
-            );
+      if (System.nanoTime() - startTime > TIME_LIMIT_NANOS) break;
 
-            if (score > currentBestScore) {
-              currentBestScore = score;
-              currentBestMove = column;
-            }
-          } catch (TimeoutException e) {
-            return bestMove;
-          } catch (InvalidMoveException e) {
-          }
-        }
+      if (currentBestMove != -1) {
+        bestMove = currentBestMove;
       }
-      bestMove = currentBestMove;
-      bestScore = currentBestScore;
     }
-    return bestMove;
+
+     return bestMove;
   }
 
   private int findImmediateMove(Board board) {
@@ -86,44 +65,53 @@ public class SuperChargedRobBot extends Player {
     return -1;
   }
 
-  private int minimaxWithTimeLimit(
-          Board board,
-          int depth,
-          boolean isMaximizing,
-          int alpha,
-          int beta,
-          long startTime
-  ) throws TimeoutException {
-    if (System.nanoTime() - startTime > TIME_LIMIT_NANOS) {
-      throw new TimeoutException();
+  private int findBestMoveAtDepth(Board board, int depth, long startTime) {
+    int bestMove = -1;
+    int bestScore = Integer.MIN_VALUE;
+    int[] columns = getColumnOrder(board.getConfig().getWidth());
+
+    for (int column : columns) {
+      if (!isValidMove(board, column)) continue;
+
+      try {
+        Board newBoard = new Board(board, column, getCounter());
+        int score = minimax(newBoard, depth, false, Integer.MIN_VALUE, Integer.MAX_VALUE, startTime);
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = column;
+        }
+      } catch (TimeoutException | InvalidMoveException e) {
+        break;
+      }
     }
+
+    return bestMove;
+  }
+
+  private int minimax(Board board, int depth, boolean isMaximizing,
+                      int alpha, int beta, long startTime) throws TimeoutException {
+    if (System.nanoTime() - startTime > TIME_LIMIT_NANOS)
+      throw new TimeoutException();
 
     Counter myCounter = getCounter();
     Counter opponent = myCounter.getOther();
 
-    // Check terminal conditions
+    // Terminal conditions
     if (hasWon(board, myCounter)) return WIN_SCORE;
     if (hasWon(board, opponent)) return -WIN_SCORE;
-    if (depth == 0 || isBoardFull(board)) {
-      return evaluateBoard(board);
-    }
+    if (depth == 0 || isBoardFull(board)) return evaluateBoard(board);
 
-    Counter currentCounter = isMaximizing ? myCounter : opponent;
+    Counter currentPlayer = isMaximizing ? myCounter : opponent;
     int bestValue = isMaximizing ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+    int[] columns = getColumnOrder(board.getConfig().getWidth());
 
-    for (int column : getColumnOrder(board.getConfig().getWidth())) {
+    for (int column : columns) {
       if (!isValidMove(board, column)) continue;
 
       try {
-        Board newBoard = new Board(board, column, currentCounter);
-        int eval = minimaxWithTimeLimit(
-                newBoard,
-                depth - 1,
-                !isMaximizing,
-                alpha,
-                beta,
-                startTime
-        );
+        Board newBoard = new Board(board, column, currentPlayer);
+        int eval = minimax(newBoard, depth - 1, !isMaximizing, alpha, beta, startTime);
 
         if (isMaximizing) {
           bestValue = Math.max(bestValue, eval);
@@ -135,6 +123,7 @@ public class SuperChargedRobBot extends Player {
 
         if (beta <= alpha) break;
       } catch (InvalidMoveException e) {
+        // Skip invalid moves
       }
     }
 
@@ -146,33 +135,8 @@ public class SuperChargedRobBot extends Player {
     Counter myCounter = getCounter();
     Counter opponent = myCounter.getOther();
 
-    // Evaluate immediate threats and potential wins
     score += evaluateThreats(board, myCounter);
-    score -= evaluateThreats(board, opponent) * 10; // Weight opponent threats slightly higher
-
-    // Evaluate all possible lines
-    for (int column = 0; column < board.getConfig().getWidth(); column++) {
-      for (int row = 0; row < board.getConfig().getHeight(); row++) {
-        Position pos = new Position(column, row);
-        if (!board.hasCounterAtPosition(pos)) {
-          // Evaluate empty positions for potential future threats
-          score += evaluateEmptyPosition(board, pos, myCounter);
-          score -= (int) (evaluateEmptyPosition(board, pos, opponent) * 1.1);
-          continue;
-        }
-
-        Counter counter = board.getCounterAtPosition(pos);
-        int multiplier = counter == myCounter ? 1 : -1;
-
-        for (int[] dir : DIRECTIONS) {
-          int length = getRunLength(board, pos, counter, dir[0], dir[1]);
-          if (length >= 2) {
-            score += evaluateRun(board, pos, length, dir[0], dir[1], multiplier);
-          }
-        }
-      }
-    }
-
+    score -= evaluateThreats(board, opponent) * 2;
     score += evaluateCenterControl(board);
 
     return score;
@@ -219,72 +183,36 @@ public class SuperChargedRobBot extends Player {
     return threatScore;
   }
 
-
-
-  private int evaluateEmptyPosition(Board board, Position pos, Counter counter) {
-    int score = 0;
-
-    // Check if this position could complete or block a threat
-    try {
-      Board testBoard = new Board(board, pos.getX(), counter);
-
-      // Check if this move would create an open three
-      for (int[] dir : DIRECTIONS) {
-        int length = getRunLength(testBoard, pos, counter, dir[0], dir[1]);
-        if (length >= 3) {
-          Position before = new Position(pos.getX() - dir[0], pos.getY() - dir[1]);
-          Position after = new Position(pos.getX() + (length * dir[0]), pos.getY() + (length * dir[1]));
-
-          boolean startOpen = isValidPosition(testBoard, before) && !testBoard.hasCounterAtPosition(before);
-          boolean endOpen = isValidPosition(testBoard, after) && !testBoard.hasCounterAtPosition(after);
-
-          if (startOpen && endOpen) {
-            score += OPEN_THREE_SCORE / 2;
-          }
-        }
-      }
-    } catch (InvalidMoveException e) {
-      return 0;
-    }
-
-    return score;
-  }
-
-  private int evaluateRun(Board board, Position start, int length, int dx, int dy, int multiplier) {
-    int score = length * length * 10; // Base score for run length
-
-    // Check if run is open-ended
-    Position before = new Position(start.getX() - dx, start.getY() - dy);
-    Position after = new Position(start.getX() + (length * dx), start.getY() + (length * dy));
-
-    boolean startOpen = isValidPosition(board, before) && !board.hasCounterAtPosition(before);
-    boolean endOpen = isValidPosition(board, after) && !board.hasCounterAtPosition(after);
-
-    if (multiplier < 0 && startOpen && endOpen) {
-      score *= 3;  // Triple the negative score for opponent's open-ended runs
-    }
-
-    // Bonus for our open-ended runs
-    if (multiplier > 0) {
-      if (startOpen || endOpen) score += length * 20;
-      if (startOpen && endOpen) score += length * 30;
-    }
-
-    return score * multiplier;
-  }
-
   private int evaluateCenterControl(Board board) {
-    int score = 0;
+    int occupiedSpaces = countOccupiedSpaces(board);
+    int totalSpaces = board.getConfig().getWidth() * board.getConfig().getHeight();
+    double occupancyRatio = (double)occupiedSpaces / (double)totalSpaces;
+    int centerWeight = (int)(30.0 * Math.pow(occupancyRatio, 0.5) * 2.0);
+
     int centerColumn = board.getConfig().getWidth() / 2;
+    int score = 0;
     Counter myCounter = getCounter();
+
 
     for (int row = 0; row < board.getConfig().getHeight(); row++) {
       Position centerPos = new Position(centerColumn, row);
       if (board.hasCounterAtPosition(centerPos)) {
-        score += board.getCounterAtPosition(centerPos) == myCounter ? 30 : -30;
+        score += board.getCounterAtPosition(centerPos) == myCounter ? centerWeight : -centerWeight;
       }
     }
     return score;
+  }
+
+  private int countOccupiedSpaces(Board board) {
+    int occupied = 0;
+    for (int column = 0; column < board.getConfig().getWidth(); column++) {
+      for (int row = 0; row < board.getConfig().getHeight(); row++) {
+        if (board.hasCounterAtPosition(new Position(column, row))) {
+          occupied++;
+        }
+      }
+    }
+    return occupied;
   }
 
   private boolean hasWon(Board board, Counter counter) {
