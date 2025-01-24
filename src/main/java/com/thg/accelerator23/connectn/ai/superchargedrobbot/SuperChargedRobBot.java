@@ -10,9 +10,9 @@ public class SuperChargedRobBot extends Player {
   private static final long TIME_LIMIT_NANOS = 9_500_000_000L; // 9.5 seconds
   private static final int[][] DIRECTIONS = {{1,0}, {0,1}, {1,1}, {1,-1}}; // Right, Up, Diagonal-right, Diagonal-left
 
-  private static final int WIN_SCORE = 1000000;
-  private static final int OPEN_THREE_SCORE = 10000;
-  private static final int DOUBLE_THREAT_SCORE = 50000;
+  private static final int WIN_SCORE = 1_000_000;
+  private static final int OPEN_THREE_SCORE = 10_000;
+  private static final int DOUBLE_THREAT_SCORE = 50_000;
 
   public SuperChargedRobBot(Counter counter) {
     super(counter, SuperChargedRobBot.class.getName());
@@ -20,9 +20,9 @@ public class SuperChargedRobBot extends Player {
 
   @Override
   public int makeMove(Board board) {
-    System.out.println("SuperChargedRobBot makeMove");
     long startTime = System.nanoTime();
-    int bestMove = board.getConfig().getWidth() / 2; // Default to center
+    int boardWidth = board.getConfig().getWidth();
+    int bestMove = boardWidth / 2; // Default to center
     int bestScore = Integer.MIN_VALUE;
 
     // Check for immediate winning moves or blocking moves
@@ -33,7 +33,6 @@ public class SuperChargedRobBot extends Player {
 
     // Iterative deepening with time limit
     for (int depth = 1; depth <= MAX_DEPTH; depth++) {
-      System.out.println("Depth: " + depth);
       int currentBestMove = bestMove;
       int currentBestScore = bestScore;
 
@@ -57,7 +56,6 @@ public class SuperChargedRobBot extends Player {
           } catch (TimeoutException e) {
             return bestMove;
           } catch (InvalidMoveException e) {
-            // Skip invalid moves
           }
         }
       }
@@ -82,7 +80,6 @@ public class SuperChargedRobBot extends Player {
             return column;
           }
         } catch (InvalidMoveException e) {
-          continue;
         }
       }
     }
@@ -138,7 +135,6 @@ public class SuperChargedRobBot extends Player {
 
         if (beta <= alpha) break;
       } catch (InvalidMoveException e) {
-        // Skip invalid moves
       }
     }
 
@@ -361,9 +357,14 @@ public class SuperChargedRobBot extends Player {
   }
 
   private boolean isValidPosition(Board board, Position pos) {
-    return pos.getX() >= 0 &&
-            pos.getX() < board.getConfig().getWidth() &&
-            pos.getY() >= 0 &&
-            pos.getY() < board.getConfig().getHeight();
+    int x = pos.getX();
+    int y = pos.getY();
+    int boardWidth = board.getConfig().getWidth();
+    int boardHeight = board.getConfig().getHeight();
+
+    return x >= 0 &&
+            x < boardWidth &&
+            y >= 0 &&
+            y < boardHeight;
   }
 }
