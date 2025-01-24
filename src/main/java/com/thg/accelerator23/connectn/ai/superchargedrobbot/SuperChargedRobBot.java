@@ -186,14 +186,13 @@ public class SuperChargedRobBot extends Player {
   private int evaluateCenterControl(Board board) {
     int occupiedSpaces = countOccupiedSpaces(board);
     int totalSpaces = board.getConfig().getWidth() * board.getConfig().getHeight();
-    double occupancyRatio = (double) occupiedSpaces / totalSpaces;
+    double occupancyRatio = (double)occupiedSpaces / (double)totalSpaces;
+    int centerWeight = (int)(30.0 * Math.pow(occupancyRatio, 0.5) * 2.0);
 
     int centerColumn = board.getConfig().getWidth() / 2;
     int score = 0;
     Counter myCounter = getCounter();
 
-    // Linearly reduce center weighting as board fills
-    int centerWeight = (int) (30 * (1 - occupancyRatio));
 
     for (int row = 0; row < board.getConfig().getHeight(); row++) {
       Position centerPos = new Position(centerColumn, row);
